@@ -112,7 +112,7 @@ td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}
   <label id="lP2w" hidden>パスワード（確認）<input id="lP2" type="password" autocomplete="new-password"></label>
   <div class="err" id="lerr" role="alert"></div>
   <button class="pri" id="lbtn" type="submit">ログイン</button>
-  <button class="linkbtn" id="lswitch" type="button">パスワードを忘れた場合</button>
+  <button class="linkbtn" id="lswitch" type="button">初めての方・パスワードを忘れた方</button>
 </form></div>
 
 <div id="app" hidden>
@@ -135,6 +135,7 @@ td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}
     <button role="tab" data-t="month" aria-selected="true">月次サマリ</button>
     <button role="tab" data-t="projects" aria-selected="false">案件一覧</button>
     <button role="tab" data-t="eng" aria-selected="false">エンジニア</button>
+    <button role="tab" data-t="acct" aria-selected="false" id="tabAcct" hidden>アカウント管理</button>
   </div>
   <section id="view"></section>
   <p class="note" id="status"></p>
@@ -160,7 +161,7 @@ const man=n=>((n||0)/10000).toLocaleString('ja-JP',{maximumFractionDigits:1})+'�
 const okM=s=>/^\d{4}-(0[1-9]|1[0-2])$/.test(s||'');
 const active=(p,m)=>okM(p.start)&&p.start<=m&&(!p.end||p.end>=m);
 const status=(p,m)=>active(p,m)?['稼働中','go']:(p.start>m?['予定','fut']:['終了','']);
-let E=[],P=[],cur=ym(new Date()),tab='month',q='',filt='all',me=null;
+let A=[],isAdmin=false,E=[],P=[],cur=ym(new Date()),tab='month',q='',filt='all',me=null;
 
 function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>el.classList.remove('show'),2400)}
 const engName=id=>(E.find(e=>e.id===id)||{}).name||'(削除済み)';
@@ -179,6 +180,7 @@ async function load(){
   try{
     const [e,p]=await Promise.all([run(sb.from('engineers').select('*').order('name')),run(sb.from('projects').select('*'))]);
     E=e.map(x=>({id:x.id,name:x.name,role:x.role}));P=p.map(toP);
+    if(isAdmin)A=await run(sb.from('allowed_emails').select('*').order('created_at'));
     $('#status').textContent='最終更新 '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})+'（ほかの人の変更は、画面を開き直すと反映されます）';
   }catch(err){$('#status').textContent='データを読み込めませんでした：'+(err.message||err)}
   render();
@@ -216,7 +218,7 @@ function render(){
   const ms=Array.from({length:12},(_,i)=>addM(cur,i-8)),vals=ms.map(rev),mx=Math.max(...vals,1);
   $('#bars').innerHTML=ms.map((m,i)=>'<div class="bar'+(m===cur?' on':'')+'" tabindex="0" role="button" data-m="'+m+'" aria-label="'+mLabel(m)+' '+yen(vals[i])+'"><div class="t num">'+(vals[i]?esc(man(vals[i])):'')+'</div><i style="height:'+(vals[i]/mx*150)+'px"></i><div class="m">'+(m.endsWith('-01')||i===0?m.slice(2,4)+'/':'')+mShort(m)+'</div></div>').join('');
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.t===tab));
-  $('#view').innerHTML=tab==='month'?vMonth():tab==='projects'?vProjects():vEng();
+  $('#view').innerHTML=tab==='month'?vMonth():tab==='projects'?vProjects():tab==='acct'?vAcct():vEng();
   if(tab==='projects'){$('#q').value=q;$('#flt').value=filt}
 }
 const add=t=>'<button class="pri" data-a="'+t+'">＋ '+(t==='newP'?'案件を登録':'エンジニアを登録')+'</button>';
@@ -236,6 +238,13 @@ function vProjects(){
   (list.length?'<table class="stack"><thead><tr><th>案件名</th><th>顧客</th><th>担当</th><th class="r">月単価</th><th>期間</th><th>状態</th><th></th></tr></thead><tbody>'+
   list.map(p=>{const st=status(p,cur);return '<tr><td><b>'+esc(p.title)+'</b>'+(p.note?'<div class="sub">'+esc(p.note)+'</div>':'')+'</td><td>'+esc(p.client)+'</td><td>'+esc(engName(p.engineerId))+'</td><td class="r num">'+esc(yen(p.price))+'</td><td class="num">'+esc(p.start)+' 〜 '+esc(p.end||'継続')+'</td><td><span class="tag '+st[1]+'">'+st[0]+'</span></td><td><div class="act"><button class="ghost" data-a="editP" data-id="'+esc(p.id)+'">編集</button><button class="ghost" data-a="delP" data-id="'+esc(p.id)+'">削除</button></div></td></tr>'}).join('')+'</tbody></table>':'<div class="empty">該当する案件はありません。</div>')+
   '<p class="note">状態は表示中の月（'+esc(mLabel(cur))+'）を基準に判定します。終了月が空欄の案件は継続中として毎月計上されます。</p>';
+}
+function vAcct(){
+  return '<div class="tools"><b>利用できる人</b><span class="sp"></span><button class="pri" data-a="newA">＋ 利用者を追加</button></div>'+
+  '<p class="note" style="margin:0 0 14px">ここに登録したメールアドレスの人だけが使えます。追加した人には、ログイン画面の「初めての方・パスワードを忘れた方」からパスワードを設定してもらってください。</p>'+
+  '<table class="stack"><thead><tr><th>メールアドレス</th><th>権限</th><th>追加日</th><th></th></tr></thead><tbody>'+
+  A.map(a=>{const self=me&&a.email===String(me.email||'').toLowerCase();return '<tr><td><b>'+esc(a.email)+'</b>'+(self?' <span class="tag">自分</span>':'')+'</td><td>'+(a.is_admin?'<span class="tag go">管理者</span>':'<span class="tag">一般</span>')+'</td><td class="num">'+esc(String(a.created_at||'').slice(0,10))+'</td><td>'+(self?'':'<div class="act"><button class="ghost" data-a="roleA" data-id="'+esc(a.email)+'">'+(a.is_admin?'一般にする':'管理者にする')+'</button><button class="ghost" data-a="delA" data-id="'+esc(a.email)+'">削除</button></div>')+'</td></tr>'}).join('')+'</tbody></table>'+
+  '<p class="note">削除した人は、すぐにデータを見られなくなります。</p>';
 }
 function vEng(){
   const ms=Array.from({length:6},(_,i)=>addM(cur,i-5));
@@ -294,6 +303,14 @@ document.addEventListener('input',e=>{if(e.target.id==='q'){q=e.target.value;con
 document.addEventListener('change',e=>{if(e.target.id==='flt'){filt=e.target.value;render()}});
 document.addEventListener('click',e=>{
   const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,id=b.dataset.id;
+  if(a==='newA')openDlg('利用者を追加',fld('aE','メールアドレス','email','',{w:1,ph:'name@example.com'})+'<label class="w" style="flex-direction:row;align-items:center;gap:8px;color:inherit"><input id="aAd" type="checkbox" style="min-height:auto;width:20px;height:20px">管理者にする（利用者の追加・削除ができる）</label>',async()=>{
+    const em=$('#aE').value.trim().toLowerCase();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em))return 'メールアドレスを正しく入力してください';
+    if(A.some(x=>x.email===em))return 'すでに登録されています';
+    await run(sb.from('allowed_emails').insert({email:em,is_admin:$('#aAd').checked}));await load();
+  },'追加する');
+  if(a==='roleA'){const x=A.find(y=>y.email===id);(async()=>{try{await run(sb.from('allowed_emails').update({is_admin:!x.is_admin}).eq('email',id));await load();toast('権限を変更しました')}catch(e){toast(errMsg(e))}})()}
+  if(a==='delA')confirmDlg(id+' を利用者から削除します。この人はデータを見られなくなります。',async()=>{await run(sb.from('allowed_emails').delete().eq('email',id));await load()});
   if(a==='newP')projDlg();
   if(a==='newE')engDlg();
   if(a==='editP')projDlg(P.find(p=>p.id===id));
@@ -313,13 +330,18 @@ function setMode(m){
   lmode=m;
   $('#lEw').hidden=m==='newpw';$('#lPw').hidden=m==='reset';$('#lP2w').hidden=m!=='newpw';
   $('#lP').autocomplete=m==='newpw'?'new-password':'current-password';
-  $('#lbtn').textContent={login:'ログイン',reset:'再設定メールを送る',newpw:'パスワードを設定する'}[m];
-  $('#lswitch').hidden=m==='newpw';$('#lswitch').textContent=m==='reset'?'ログイン画面に戻る':'パスワードを忘れた場合';
-  $('#lmsg').textContent={login:'メールアドレスとパスワードでログインしてください。',reset:'登録済みのメールアドレスに、パスワード再設定用のリンクを送ります。',newpw:'新しいパスワード（8文字以上）を設定してください。'}[m];
+  $('#lbtn').textContent={login:'ログイン',reset:'パスワード設定メールを送る',newpw:'パスワードを設定する'}[m];
+  $('#lswitch').hidden=m==='newpw';$('#lswitch').textContent=m==='reset'?'ログイン画面に戻る':'初めての方・パスワードを忘れた方';
+  $('#lmsg').textContent={login:'メールアドレスとパスワードでログインしてください。',reset:'メールアドレスを入力してください。パスワードを設定するためのリンクをお送りします（管理者が登録したアドレスのみ）。',newpw:'新しいパスワード（8文字以上）を設定してください。'}[m];
   $('#lerr').textContent='';
 }
 function showLogin(m){$('#app').hidden=true;$('#login').hidden=false;setMode(m||'login')}
-function enter(user){me=user;$('#meE').textContent=user.email||'';$('#login').hidden=true;$('#app').hidden=false;load()}
+async function enter(user){
+  me=user;
+  let mem=false;try{mem=await run(sb.rpc('is_member'));isAdmin=!!(await run(sb.rpc('is_admin')))}catch(_){}
+  if(!mem){try{await sb.auth.signOut()}catch(_){}me=null;showLogin();$('#lerr').textContent='このアカウントには利用権限がありません。管理者に登録を依頼してください。';return}
+  $('#tabAcct').hidden=!isAdmin;if(!isAdmin&&tab==='acct')tab='month';
+  $('#meE').textContent=user.email||'';$('#login').hidden=true;$('#app').hidden=false;load()}
 $('#lswitch').onclick=()=>setMode(lmode==='reset'?'login':'reset');
 $('#lf').addEventListener('submit',async ev=>{
   ev.preventDefault();const L=$('#lerr');L.textContent='';L.className='err';
@@ -331,8 +353,10 @@ $('#lf').addEventListener('submit',async ev=>{
       const d=await run(sb.auth.signInWithPassword({email,password:pw}));$('#lP').value='';enter(d.user);
     }else if(lmode==='reset'){
       if(!email){L.textContent='メールアドレスを入力してください。';return}
-      await run(sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname}));
-      L.className='ok';L.textContent='メールを送りました（登録済みのアドレスの場合のみ届きます）。メール内のリンクを開いてください。';
+      const r=await fetch(cfg.SUPABASE_URL+'/functions/v1/request-password-setup',{method:'POST',headers:{'Content-Type':'application/json',apikey:cfg.SUPABASE_ANON_KEY},body:JSON.stringify({email,redirectTo:location.origin+location.pathname})});
+      if(r.status===429){L.textContent='短時間に送信が続いたため、しばらく時間をおいてから再度お試しください。';return}
+      if(!r.ok){L.textContent='メールを送れませんでした。時間をおいて再度お試しください。';return}
+      L.className='ok';L.textContent='メールを送りました（登録されたアドレスの場合のみ届きます）。メール内のリンクを開くと、この画面でパスワードを設定できます。迷惑メールフォルダもご確認ください。';
     }else{
       if(pw.length<8){L.textContent='パスワードは8文字以上にしてください。';return}
       if(pw!==$('#lP2').value){L.textContent='確認用パスワードが一致しません。';return}
@@ -342,7 +366,7 @@ $('#lf').addEventListener('submit',async ev=>{
   }catch(e){L.className='err';L.textContent=errMsg(e)}
   finally{$('#lbtn').disabled=false}
 });
-$('#logout').onclick=async()=>{try{await sb.auth.signOut()}catch(_){}E=[];P=[];showLogin()};
+$('#logout').onclick=async()=>{try{await sb.auth.signOut()}catch(_){}E=[];P=[];A=[];isAdmin=false;showLogin()};
 $('#pw').onclick=()=>pwDlg();
 
 (async()=>{
