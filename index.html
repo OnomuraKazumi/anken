@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>エンジニア案件管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&family=Noto+Sans+JP:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+/* エンジニア案件管理 — スタイル
+   IDEA: 測量図の凡例 — 月ごとの稼働を地図の等高線のように読む。
+   PICTURE: 月別売上の棒グラフ(クリックで月切替)と、エンジニア別の当月稼働表。
+   COLOUR and TYPE: 陸地#fbfbf2、海#bfe3ee、等高線ブラウン、インク#13242e、ルートのマゼンタを強調。Overpass 800の数字+Noto Sans JP。
+   LAYOUT: 上部に月切替とKPI、続いてグラフ、タブで月次/案件/エンジニア。600px以下は縦積み。 */
+:root{color-scheme:light dark;--bg:light-dark(#fbfbf2,#0d1c24);--ink:light-dark(#13242e,#e8efe9);--sea:light-dark(#bfe3ee,#173847);--sea2:light-dark(#9fd2e2,#225066);--brown:light-dark(#a8551b,#e39a62);--mag:light-dark(#d6127e,#ff5aa8);--line:light-dark(#e4e2d2,#1f3440);--soft:light-dark(#5d6b70,#9fb1b8);--card:light-dark(#ffffff,#122733)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "Noto Sans JP",system-ui,sans-serif;overflow-x:clip}
+.num{font-family:Overpass,"Noto Sans JP",sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
+.band{padding:clamp(20px,3vw,40px) max(5vw,16px)}
+.wrap{max-width:1240px;margin:0 auto}
+header.band{background:var(--sea);padding-bottom:0}
+.top{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between}
+h1{font-size:clamp(24px,3.4vw,34px);line-height:1.1;margin:0;font-weight:800;text-wrap:balance}
+.mon{display:flex;align-items:center;gap:6px}
+.mon b{font-size:20px;min-width:7.5em;text-align:center}
+button,input,select,textarea{font:inherit;font-size:16px;color:inherit}
+button{min-height:44px;border-radius:10px;border:1px solid transparent;background:transparent;cursor:pointer;padding:0 16px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.bar:focus-visible{outline:3px solid var(--mag);outline-offset:2px}
+.ic{width:44px;padding:0;font-size:20px;background:var(--bg)}
+.pri{background:var(--ink);color:var(--bg);font-weight:700}
+.ghost{border-color:var(--line);background:var(--card)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin-top:22px;border-top:1px solid color-mix(in srgb,var(--ink) 20%,transparent)}
+.kpi{padding:16px 16px 18px 0}
+.kpi+.kpi{padding-left:16px;border-left:1px solid color-mix(in srgb,var(--ink) 20%,transparent)}
+.kpi small{display:block;font-size:13px;color:var(--soft)}
+.kpi .v{font-size:clamp(24px,3.6vw,40px);font-weight:800;line-height:1.15}
+.kpi .d{font-size:13px}.up{color:light-dark(#1b7a4a,#5fd39a)}.dn{color:var(--mag)}
+.chart{background:var(--sea);padding:8px max(5vw,16px) 26px}
+.bars{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:6px;align-items:end;height:200px;max-width:1240px;margin:0 auto}
+.bar{display:flex;flex-direction:column;justify-content:flex-end;height:100%;cursor:pointer;border-radius:6px;position:relative}
+.bar i{display:block;background:var(--sea2);border-radius:5px 5px 0 0;min-height:2px;transition:height .4s}
+.bar.on i{background:var(--brown)}
+.bar .t{font-size:11px;text-align:center;color:var(--soft);margin-bottom:3px}
+.bar.on .t{color:var(--brown);font-weight:700}
+.bar .m{font-size:13px;text-align:center;padding-top:4px;border-top:2px solid var(--ink)}
+.bar.on .m{font-weight:800}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--line);margin-bottom:20px}
+.tabs button{border-radius:10px 10px 0 0;font-weight:700;color:var(--soft)}
+.tabs button[aria-selected=true]{color:var(--ink);box-shadow:inset 0 -3px var(--mag)}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.tools .sp{flex:1}
+.tools input,.tools select{min-height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;background:var(--card)}
+table{width:100%;border-collapse:collapse}
+th{font-size:13px;font-weight:500;color:var(--soft);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.r{text-align:right}
+.cnt{font-size:28px;font-weight:800;line-height:1}
+.dots{display:flex;gap:3px;margin-top:6px}.dots span{width:8px;height:8px;border-radius:50%;background:var(--brown)}
+.who b{display:block}.who small,.sub{font-size:13px;color:var(--soft)}
+.pj{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:14px}
+.pj span{white-space:nowrap}
+.meter{height:6px;background:var(--line);border-radius:3px;margin-top:6px}.meter i{display:block;height:100%;background:var(--mag);border-radius:3px}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;background:var(--line);white-space:nowrap}
+.tag.go{background:color-mix(in srgb,var(--brown) 20%,transparent);color:var(--brown)}
+.tag.fut{background:var(--sea)}
+.act{display:flex;gap:4px;justify-content:flex-end}.act button{padding:0 10px;min-height:40px;font-size:14px;border-color:var(--line)}
+.mx td.c{text-align:center;font-weight:700}.mx td.c span{display:inline-block;min-width:28px;border-radius:6px;padding:2px 4px}
+.empty{padding:36px;text-align:center;color:var(--soft);border:1px dashed var(--line);border-radius:12px}
+.note{font-size:13px;color:var(--soft);margin:10px 0 0}
+.banner{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;background:color-mix(in srgb,var(--mag) 10%,transparent);border-radius:10px;padding:8px 14px;font-size:14px;margin-bottom:16px}
+.ov{position:fixed;inset:0;background:rgb(0 0 0/.45);display:none;align-items:flex-start;justify-content:center;padding:6vh 16px;z-index:9;overflow:auto}
+.ov.show{display:flex}
+.dlg{background:var(--card);border-radius:16px;padding:24px;width:min(520px,100%);box-shadow:0 20px 60px rgb(0 0 0/.3)}
+.dlg h2{margin:0 0 14px;font-size:22px}
+.f{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.f label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--soft)}
+.f .w{grid-column:1/-1}
+.f input,.f select,.f textarea{min-height:44px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--bg);color:var(--ink)}
+.btns{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.err{color:var(--mag);font-size:14px;min-height:1.4em;margin-top:8px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10}
+.toast.show{opacity:1}
+.scroll{overflow-x:auto}
+@media(max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi:nth-child(3){border-left:0;padding-left:0}.kpi:nth-child(n+3){border-top:1px solid color-mix(in srgb,var(--ink) 20%,transparent)}.bars{height:160px;gap:3px}.bar .t{display:none}}
+@media(max-width:600px){.f{grid-template-columns:1fr}table{font-size:14px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px;border-bottom:1px solid var(--line)}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:6.5em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:6em;margin-inline-start:-6.5em;font-size:12px;color:var(--soft)}.stack td:empty{display:none}.act{justify-content:flex-start}}
+.login{position:fixed;inset:0;background:var(--sea);display:flex;align-items:center;justify-content:center;padding:16px;z-index:8;overflow:auto}
+.login[hidden],#app[hidden]{display:none}
+.lbox{background:var(--card);border-radius:18px;padding:32px 28px;width:min(400px,100%);display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgb(0 0 0/.15)}
+.lbox h1{font-size:26px}
+.lbox label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--soft)}
+.lbox label[hidden]{display:none}
+.lbox input{min-height:46px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--bg);color:var(--ink)}
+.lbox .pri{min-height:48px}
+.me{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:14px}
+.me span{color:var(--soft);overflow-wrap:anywhere}
+.me button{min-height:40px;padding:0 12px;font-size:14px}
+@media(prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+<style>.linkbtn{background:none;border:0;color:var(--soft);text-decoration:underline;min-height:40px;padding:0;font-size:14px;align-self:center}.bar .m{white-space:nowrap}@media(max-width:600px){.bar .m{font-size:10px}}.ok{color:light-dark(#1b7a4a,#5fd39a);font-size:14px}</style>
+<script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+</head>
+<body>
+<div id="login" class="login"><form id="lf" class="lbox" novalidate>
+  <h1>エンジニア案件管理</h1>
+  <p class="sub" id="lmsg" style="margin:0">メールアドレスとパスワードでログインしてください。</p>
+  <label id="lEw">メールアドレス<input id="lE" type="email" autocomplete="username" inputmode="email"></label>
+  <label id="lPw">パスワード<input id="lP" type="password" autocomplete="current-password"></label>
+  <label id="lP2w" hidden>パスワード（確認）<input id="lP2" type="password" autocomplete="new-password"></label>
+  <div class="err" id="lerr" role="alert"></div>
+  <button class="pri" id="lbtn" type="submit">ログイン</button>
+  <button class="linkbtn" id="lswitch" type="button">パスワードを忘れた場合</button>
+</form></div>
+
+<div id="app" hidden>
+<header class="band"><div class="wrap">
+  <div class="me" style="justify-content:flex-end;margin-bottom:10px"><span id="meE"></span><button class="ghost" id="pw">パスワード変更</button><button class="ghost" id="logout">ログアウト</button></div>
+  <div class="top">
+    <h1>エンジニア案件管理</h1>
+    <div class="mon">
+      <button class="ic" id="prev" aria-label="前の月">‹</button>
+      <b class="num" id="monLabel"></b>
+      <button class="ic" id="next" aria-label="次の月">›</button>
+      <button class="ghost" id="today">今月</button>
+    </div>
+  </div>
+  <div class="kpis" id="kpis"></div>
+</div></header>
+<div class="chart" aria-label="月別売上"><div class="bars" id="bars"></div></div>
+<main class="band"><div class="wrap">
+  <div class="tabs" role="tablist">
+    <button role="tab" data-t="month" aria-selected="true">月次サマリ</button>
+    <button role="tab" data-t="projects" aria-selected="false">案件一覧</button>
+    <button role="tab" data-t="eng" aria-selected="false">エンジニア</button>
+  </div>
+  <section id="view"></section>
+  <p class="note" id="status"></p>
+</div></main>
+</div>
+
+<div class="ov" id="ov"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT">
+  <h2 id="dlgT"></h2><form id="form" novalidate><div class="f" id="fields"></div><div class="err" id="ferr"></div>
+  <div class="btns"><button type="button" class="ghost" id="cancel">キャンセル</button><button type="submit" class="pri" id="ok">保存</button></div></form>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+{
+const $=s=>document.querySelector(s);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ym=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+const addM=(m,n)=>{const [y,mo]=m.split('-').map(Number);return ym(new Date(y,mo-1+n,1))};
+const mLabel=m=>{const [y,mo]=m.split('-');return y+'年'+Number(mo)+'月'};
+const mShort=m=>Number(m.split('-')[1])+'月';
+const yen=n=>'¥'+Math.round(n||0).toLocaleString('ja-JP');
+const man=n=>((n||0)/10000).toLocaleString('ja-JP',{maximumFractionDigits:1})+'万';
+const okM=s=>/^\d{4}-(0[1-9]|1[0-2])$/.test(s||'');
+const active=(p,m)=>okM(p.start)&&p.start<=m&&(!p.end||p.end>=m);
+const status=(p,m)=>active(p,m)?['稼働中','go']:(p.start>m?['予定','fut']:['終了','']);
+let E=[],P=[],cur=ym(new Date()),tab='month',q='',filt='all',me=null;
+
+function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>el.classList.remove('show'),2400)}
+const engName=id=>(E.find(e=>e.id===id)||{}).name||'(削除済み)';
+const rev=m=>P.filter(p=>active(p,m)).reduce((s,p)=>s+(+p.price||0),0);
+
+/* ---------- Supabase ---------- */
+const H0=location.hash+location.search;
+const cfg=window.APP_CONFIG||{};
+const configured=cfg.SUPABASE_URL&&/^https:\/\//.test(cfg.SUPABASE_URL)&&!/xxxxxxxx/.test(cfg.SUPABASE_URL)&&cfg.SUPABASE_ANON_KEY&&!/ここに/.test(cfg.SUPABASE_ANON_KEY);
+const sb=configured&&window.supabase?window.supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY):null;
+const run=async p=>{const {data,error}=await p;if(error)throw error;return data};
+const toP=r=>({id:r.id,title:r.title,client:r.client,engineerId:r.engineer_id,price:r.price,start:r.start_month,end:r.end_month||'',note:r.note});
+const fromP=o=>({title:o.title,client:o.client,engineer_id:o.engineerId,price:o.price,start_month:o.start,end_month:o.end||null,note:o.note});
+async function load(){
+  $('#status').textContent='読み込み中…';
+  try{
+    const [e,p]=await Promise.all([run(sb.from('engineers').select('*').order('name')),run(sb.from('projects').select('*'))]);
+    E=e.map(x=>({id:x.id,name:x.name,role:x.role}));P=p.map(toP);
+    $('#status').textContent='最終更新 '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})+'（ほかの人の変更は、画面を開き直すと反映されます）';
+  }catch(err){$('#status').textContent='データを読み込めませんでした：'+(err.message||err)}
+  render();
+}
+async function save(col,id,o){
+  const row=col==='projects'?fromP(o):{name:o.name,role:o.role};
+  if(id)await run(sb.from(col).update(row).eq('id',id));else await run(sb.from(col).insert(row));
+  await load();
+}
+async function remove(col,id){await run(sb.from(col).delete().eq('id',id));await load()}
+function errMsg(e){
+  const m=(e&&e.message)||'';
+  if(/Invalid login credentials/i.test(m))return 'メールアドレスまたはパスワードが違います。';
+  if(/Email not confirmed/i.test(m))return 'メールアドレスの確認が済んでいません。届いたメールのリンクを開いてください。';
+  if(/rate limit|too many/i.test(m))return '試行回数が多すぎます。しばらく待ってから再度お試しください。';
+  if(/foreign key/i.test(m))return '担当案件があるため削除できません。';
+  if(/Password should be|weak/i.test(m))return 'パスワードが短すぎるか弱すぎます。8文字以上で、英字と数字を混ぜてください。';
+  if(/different from the old/i.test(m))return '今と同じパスワードは設定できません。';
+  if(/Failed to fetch|NetworkError/i.test(m))return 'サーバーに接続できません。通信環境を確認してください。';
+  return '処理できませんでした：'+m;
+}
+
+/* ---------- views ---------- */
+function render(){
+  $('#monLabel').textContent=mLabel(cur);
+  const act=P.filter(p=>active(p,cur)),r=rev(cur),pr=rev(addM(cur,-1));
+  const busy=new Set(act.map(p=>p.engineerId)).size;
+  const diff=r-pr,pct=pr?Math.round(diff/pr*100):null,avg=act.length?r/act.length:0;
+  $('#kpis').innerHTML=[
+    ['当月売上合計','<span class="num">'+esc(yen(r))+'</span>','<span class="'+(diff>=0?'up':'dn')+'">前月比 '+(diff>=0?'+':'−')+esc(man(Math.abs(diff)))+'円'+(pct!==null?'（'+(pct>=0?'+':'')+pct+'%）':'')+'</span>'],
+    ['稼働エンジニア','<span class="num">'+busy+'</span><span style="font-size:.5em"> / '+E.length+'名</span>','待機 '+(E.length-busy)+'名'],
+    ['稼働案件数','<span class="num">'+act.length+'</span><span style="font-size:.5em"> 件</span>','1人あたり '+(busy?(act.length/busy).toFixed(1):'0')+'件'],
+    ['平均単価','<span class="num">'+esc(man(avg))+'</span><span style="font-size:.5em">円</span>','月額・案件あたり']
+  ].map(k=>'<div class="kpi"><small>'+k[0]+'</small><div class="v">'+k[1]+'</div><div class="d">'+k[2]+'</div></div>').join('');
+  const ms=Array.from({length:12},(_,i)=>addM(cur,i-8)),vals=ms.map(rev),mx=Math.max(...vals,1);
+  $('#bars').innerHTML=ms.map((m,i)=>'<div class="bar'+(m===cur?' on':'')+'" tabindex="0" role="button" data-m="'+m+'" aria-label="'+mLabel(m)+' '+yen(vals[i])+'"><div class="t num">'+(vals[i]?esc(man(vals[i])):'')+'</div><i style="height:'+(vals[i]/mx*150)+'px"></i><div class="m">'+(m.endsWith('-01')||i===0?m.slice(2,4)+'/':'')+mShort(m)+'</div></div>').join('');
+  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.t===tab));
+  $('#view').innerHTML=tab==='month'?vMonth():tab==='projects'?vProjects():vEng();
+  if(tab==='projects'){$('#q').value=q;$('#flt').value=filt}
+}
+const add=t=>'<button class="pri" data-a="'+t+'">＋ '+(t==='newP'?'案件を登録':'エンジニアを登録')+'</button>';
+function vMonth(){
+  if(!E.length)return '<div class="empty">まずエンジニアを登録してください。<br><br>'+add('newE')+'</div>';
+  const rows=E.map(e=>{const ps=P.filter(p=>p.engineerId===e.id&&active(p,cur));return {e,ps,s:ps.reduce((a,p)=>a+(+p.price||0),0)}}).sort((a,b)=>b.s-a.s||b.ps.length-a.ps.length);
+  const mx=Math.max(...rows.map(x=>x.s),1),tot=rows.reduce((a,x)=>a+x.s,0);
+  return '<div class="tools"><b>'+esc(mLabel(cur))+'の稼働状況</b><span class="sp"></span><button class="ghost" data-a="csv">CSVをダウンロード</button>'+add('newP')+'</div>'+
+  '<table class="stack"><thead><tr><th>エンジニア</th><th>案件数</th><th>遂行中の案件（単価）</th><th class="r">月売上</th></tr></thead><tbody>'+
+  rows.map(x=>'<tr><td class="who"><b>'+esc(x.e.name)+'</b><small>'+esc(x.e.role)+'</small></td><td><span class="cnt num">'+x.ps.length+'</span>'+(x.ps.length?'<div class="dots">'+x.ps.map(()=>'<span></span>').join('')+'</div>':' <span class="tag">待機</span>')+'</td><td><div class="pj">'+(x.ps.map(p=>'<span>'+esc(p.title)+' <span class="sub num">'+esc(man(p.price))+'</span></span>').join('')||'<span class="sub">—</span>')+'</div></td><td class="r"><b class="num">'+esc(yen(x.s))+'</b><div class="meter"><i style="width:'+(x.s/mx*100)+'%"></i></div></td></tr>').join('')+
+  '<tr><td><b>合計</b></td><td><b class="num">'+rows.reduce((a,x)=>a+x.ps.length,0)+'件</b></td><td></td><td class="r"><b class="num" style="font-size:20px">'+esc(yen(tot))+'</b></td></tr></tbody></table>';
+}
+function vProjects(){
+  const s=q.toLowerCase();
+  const list=P.filter(p=>{const st=status(p,cur)[0];return (filt==='all'||(filt==='go'&&st==='稼働中')||(filt==='fut'&&st==='予定')||(filt==='end'&&st==='終了'))&&(!s||[p.title,p.client,engName(p.engineerId),p.note].join(' ').toLowerCase().includes(s))}).sort((a,b)=>(b.start||'').localeCompare(a.start||''));
+  return '<div class="tools"><input id="q" type="search" placeholder="案件名・顧客・担当で検索" aria-label="検索" style="flex:1 1 220px"><select id="flt" aria-label="状態"><option value="all">すべて</option><option value="go">'+esc(mShort(cur))+'に稼働中</option><option value="fut">予定</option><option value="end">終了</option></select>'+add('newP')+'</div>'+
+  (list.length?'<table class="stack"><thead><tr><th>案件名</th><th>顧客</th><th>担当</th><th class="r">月単価</th><th>期間</th><th>状態</th><th></th></tr></thead><tbody>'+
+  list.map(p=>{const st=status(p,cur);return '<tr><td><b>'+esc(p.title)+'</b>'+(p.note?'<div class="sub">'+esc(p.note)+'</div>':'')+'</td><td>'+esc(p.client)+'</td><td>'+esc(engName(p.engineerId))+'</td><td class="r num">'+esc(yen(p.price))+'</td><td class="num">'+esc(p.start)+' 〜 '+esc(p.end||'継続')+'</td><td><span class="tag '+st[1]+'">'+st[0]+'</span></td><td><div class="act"><button class="ghost" data-a="editP" data-id="'+esc(p.id)+'">編集</button><button class="ghost" data-a="delP" data-id="'+esc(p.id)+'">削除</button></div></td></tr>'}).join('')+'</tbody></table>':'<div class="empty">該当する案件はありません。</div>')+
+  '<p class="note">状態は表示中の月（'+esc(mLabel(cur))+'）を基準に判定します。終了月が空欄の案件は継続中として毎月計上されます。</p>';
+}
+function vEng(){
+  const ms=Array.from({length:6},(_,i)=>addM(cur,i-5));
+  if(!E.length)return '<div class="empty">エンジニアが登録されていません。<br><br>'+add('newE')+'</div>';
+  return '<div class="tools"><b>直近6か月の案件数推移</b><span class="sp"></span>'+add('newE')+'</div><div class="scroll"><table class="mx"><thead><tr><th>エンジニア</th>'+ms.map(m=>'<th style="text-align:center">'+esc(mShort(m))+'</th>').join('')+'<th class="r">6か月売上</th><th></th></tr></thead><tbody>'+
+  E.map(e=>{const mine=P.filter(p=>p.engineerId===e.id);let sum=0;return '<tr><td class="who"><b>'+esc(e.name)+'</b><small>'+esc(e.role)+'</small></td>'+ms.map(m=>{const ps=mine.filter(p=>active(p,m));sum+=ps.reduce((a,p)=>a+(+p.price||0),0);const n=ps.length;return '<td class="c num"><span style="background:color-mix(in srgb,var(--brown) '+Math.min(n*22,70)+'%,transparent)">'+n+'</span></td>'}).join('')+'<td class="r num">'+esc(man(sum))+'円</td><td><div class="act"><button class="ghost" data-a="editE" data-id="'+esc(e.id)+'">編集</button><button class="ghost" data-a="delE" data-id="'+esc(e.id)+'">削除</button></div></td></tr>'}).join('')+'</tbody></table></div>';
+}
+
+/* ---------- dialogs ---------- */
+let onSave=null;
+function openDlg(title,html,fn,okText){$('#dlgT').textContent=title;$('#fields').innerHTML=html;$('#ferr').textContent='';$('#ok').textContent=okText||'保存';onSave=fn;$('#ov').classList.add('show');setTimeout(()=>{const f=$('#fields input,#fields select');f&&f.focus()},30)}
+function closeDlg(){$('#ov').classList.remove('show');onSave=null}
+const fld=(id,label,type,val,x)=>{x=x||{};return '<label'+(x.w?' class="w"':'')+'>'+label+(type==='textarea'?'<textarea id="'+id+'" rows="2">'+esc(val)+'</textarea>':'<input id="'+id+'" type="'+type+'" value="'+esc(val)+'"'+(x.ph?' placeholder="'+x.ph+'"':'')+(x.ac?' autocomplete="'+x.ac+'"':'')+(type==='number'?' min="0" step="1000" inputmode="numeric"':'')+'>')+'</label>'};
+function projDlg(p){
+  if(!E.length){toast('先にエンジニアを登録してください');return}
+  p=p||{start:cur,engineerId:E[0].id};
+  openDlg(p.id?'案件を編集':'案件を登録',
+    fld('fT','案件名 *','text',p.title,{w:1})+fld('fC','顧客','text',p.client)+
+    '<label>担当エンジニア *<select id="fE">'+E.map(e=>'<option value="'+esc(e.id)+'"'+(e.id===p.engineerId?' selected':'')+'>'+esc(e.name)+'</option>').join('')+'</select></label>'+
+    fld('fP','月単価（円）*','number',p.price,{w:1,ph:'例: 750000'})+fld('fS','開始月 *','month',p.start,{ph:'YYYY-MM'})+fld('fN','終了月（空欄=継続中）','month',p.end,{ph:'YYYY-MM'})+fld('fM','備考','textarea',p.note,{w:1}),
+    async()=>{
+      const o={title:$('#fT').value.trim(),client:$('#fC').value.trim(),engineerId:$('#fE').value,price:Math.round(+$('#fP').value),start:$('#fS').value.trim(),end:$('#fN').value.trim(),note:$('#fM').value.trim()};
+      if(!o.title)return '案件名を入力してください';
+      if(!(o.price>0))return '月単価を正しく入力してください';
+      if(!okM(o.start))return '開始月を YYYY-MM 形式で入力してください';
+      if(o.end&&!okM(o.end))return '終了月を YYYY-MM 形式で入力してください';
+      if(o.end&&o.end<o.start)return '終了月は開始月以降にしてください';
+      await save('projects',p.id,o);
+    });
+}
+function engDlg(e){
+  e=e||{};
+  openDlg(e.id?'エンジニアを編集':'エンジニアを登録',fld('fNm','氏名 *','text',e.name,{w:1})+fld('fR','役割・スキル','text',e.role,{w:1,ph:'例: バックエンド / Go'}),
+    async()=>{const o={name:$('#fNm').value.trim(),role:$('#fR').value.trim()};if(!o.name)return '氏名を入力してください';await save('engineers',e.id,o)});
+}
+function confirmDlg(msg,fn){openDlg('確認','<p class="w" style="margin:0">'+esc(msg)+'</p>',fn,'削除する')}
+function pwDlg(title){
+  openDlg(title||'パスワード変更',fld('cN','新しいパスワード（8文字以上）','password','',{w:1,ac:'new-password'})+fld('cN2','新しいパスワード（確認）','password','',{w:1,ac:'new-password'}),async()=>{
+    const n=$('#cN').value;
+    if(n.length<8)return 'パスワードは8文字以上にしてください';
+    if(n!==$('#cN2').value)return '確認用パスワードが一致しません';
+    await run(sb.auth.updateUser({password:n}));
+  },'設定する');
+}
+
+$('#form').addEventListener('submit',async ev=>{ev.preventDefault();if(!onSave)return;$('#ok').disabled=true;try{const m=await onSave();if(m)$('#ferr').textContent=m;else{closeDlg();toast('保存しました')}}catch(e){$('#ferr').textContent=errMsg(e)}finally{$('#ok').disabled=false}});
+$('#cancel').onclick=closeDlg;
+$('#ov').addEventListener('click',e=>{if(e.target.id==='ov')closeDlg()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#ov').classList.contains('show'))closeDlg()});
+const setM=m=>{cur=m;render()};
+$('#prev').onclick=()=>setM(addM(cur,-1));$('#next').onclick=()=>setM(addM(cur,1));$('#today').onclick=()=>setM(ym(new Date()));
+$('#bars').addEventListener('click',e=>{const b=e.target.closest('.bar');b&&setM(b.dataset.m)});
+$('#bars').addEventListener('keydown',e=>{const b=e.target.closest('.bar');if(b&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setM(b.dataset.m)}});
+document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b){tab=b.dataset.t;render()}});
+document.addEventListener('input',e=>{if(e.target.id==='q'){q=e.target.value;const pos=e.target.selectionStart;render();const s=$('#q');s.focus();s.setSelectionRange(pos,pos)}});
+document.addEventListener('change',e=>{if(e.target.id==='flt'){filt=e.target.value;render()}});
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,id=b.dataset.id;
+  if(a==='newP')projDlg();
+  if(a==='newE')engDlg();
+  if(a==='editP')projDlg(P.find(p=>p.id===id));
+  if(a==='editE')engDlg(E.find(x=>x.id===id));
+  if(a==='delP'){const p=P.find(x=>x.id===id);confirmDlg('案件「'+p.title+'」を削除します。元に戻せません。',()=>remove('projects',id))}
+  if(a==='delE'){const x=E.find(y=>y.id===id),n=P.filter(p=>p.engineerId===id).length;if(n){toast('担当案件が'+n+'件あるため削除できません');return}confirmDlg(x.name+' さんを削除します。',()=>remove('engineers',id))}
+  if(a==='csv'){
+    const rows=[['エンジニア','役割','案件数','案件','月売上']].concat(E.map(x=>{const ps=P.filter(p=>p.engineerId===x.id&&active(p,cur));return [x.name,x.role||'',ps.length,ps.map(p=>p.title).join(' / '),ps.reduce((s,p)=>s+(+p.price||0),0)]}));
+    const csv='﻿'+rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const l=document.createElement('a');l.href=url;l.download='案件サマリ_'+cur+'.csv';document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+});
+
+/* ---------- auth ---------- */
+let lmode='login';
+function setMode(m){
+  lmode=m;
+  $('#lEw').hidden=m==='newpw';$('#lPw').hidden=m==='reset';$('#lP2w').hidden=m!=='newpw';
+  $('#lP').autocomplete=m==='newpw'?'new-password':'current-password';
+  $('#lbtn').textContent={login:'ログイン',reset:'再設定メールを送る',newpw:'パスワードを設定する'}[m];
+  $('#lswitch').hidden=m==='newpw';$('#lswitch').textContent=m==='reset'?'ログイン画面に戻る':'パスワードを忘れた場合';
+  $('#lmsg').textContent={login:'メールアドレスとパスワードでログインしてください。',reset:'登録済みのメールアドレスに、パスワード再設定用のリンクを送ります。',newpw:'新しいパスワード（8文字以上）を設定してください。'}[m];
+  $('#lerr').textContent='';
+}
+function showLogin(m){$('#app').hidden=true;$('#login').hidden=false;setMode(m||'login')}
+function enter(user){me=user;$('#meE').textContent=user.email||'';$('#login').hidden=true;$('#app').hidden=false;load()}
+$('#lswitch').onclick=()=>setMode(lmode==='reset'?'login':'reset');
+$('#lf').addEventListener('submit',async ev=>{
+  ev.preventDefault();const L=$('#lerr');L.textContent='';L.className='err';
+  const email=$('#lE').value.trim(),pw=$('#lP').value;
+  $('#lbtn').disabled=true;
+  try{
+    if(lmode==='login'){
+      if(!email||!pw){L.textContent='メールアドレスとパスワードを入力してください。';return}
+      const d=await run(sb.auth.signInWithPassword({email,password:pw}));$('#lP').value='';enter(d.user);
+    }else if(lmode==='reset'){
+      if(!email){L.textContent='メールアドレスを入力してください。';return}
+      await run(sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname}));
+      L.className='ok';L.textContent='メールを送りました（登録済みのアドレスの場合のみ届きます）。メール内のリンクを開いてください。';
+    }else{
+      if(pw.length<8){L.textContent='パスワードは8文字以上にしてください。';return}
+      if(pw!==$('#lP2').value){L.textContent='確認用パスワードが一致しません。';return}
+      const d=await run(sb.auth.updateUser({password:pw}));$('#lP').value='';$('#lP2').value='';
+      history.replaceState(null,'',location.pathname);toast('パスワードを設定しました');enter(d.user);
+    }
+  }catch(e){L.className='err';L.textContent=errMsg(e)}
+  finally{$('#lbtn').disabled=false}
+});
+$('#logout').onclick=async()=>{try{await sb.auth.signOut()}catch(_){}E=[];P=[];showLogin()};
+$('#pw').onclick=()=>pwDlg();
+
+(async()=>{
+  if(!sb){showLogin();$('#lbtn').disabled=true;$('#lerr').textContent=window.supabase?'config.js に Supabase の接続情報が設定されていません。':'ログイン用のライブラリを読み込めませんでした。通信環境を確認してください。';return}
+  const h=H0;
+  const needPw=/type=(invite|recovery)/.test(h);
+  sb.auth.onAuthStateChange((ev,session)=>{
+    if(ev==='PASSWORD_RECOVERY'){showLogin('newpw')}
+    if(ev==='SIGNED_OUT'&&me){me=null;showLogin()}
+  });
+  try{
+    const {data}=await sb.auth.getSession();
+    if(data.session&&needPw){showLogin('newpw');return}
+    if(data.session){enter(data.session.user);return}
+    if(/error_description=/.test(h)){showLogin();$('#lerr').textContent='リンクの有効期限が切れているか、すでに使われています。もう一度「パスワードを忘れた場合」からお試しください。';return}
+  }catch(_){}
+  showLogin();$('#lE').focus();
+})();
+}
+</script>
+</body>
+</html>
